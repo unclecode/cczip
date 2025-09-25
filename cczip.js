@@ -488,6 +488,7 @@ function showHelp() {
   console.log('  --context       Show current token usage visualization');
   console.log('  --preview       Show optimization plan without making changes');
   console.log('  --restore       Restore from most recent backup');
+  console.log('  -y, --yes       Skip confirmation prompt');
   console.log('  --ctx-limit N   Set context limit (default: 200000)');
   console.log('  --protect-start N  Number of initial ranges to protect (default: 2)');
   console.log('  --protect-end N    Number of final ranges to protect (default: 3)');
@@ -515,6 +516,20 @@ function getConfigValue(flag, defaultValue) {
     if (!isNaN(value)) return value;
   }
   return defaultValue;
+}
+
+async function promptConfirmation(message) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise((resolve) => {
+    rl.question(message + ' (y/n): ', (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+    });
+  });
 }
 
 async function listSessions() {
@@ -599,6 +614,7 @@ async function main() {
   const isContext = process.argv.includes('--context');
   const isPreview = process.argv.includes('--preview');
   const isRestore = process.argv.includes('--restore');
+  const skipConfirm = process.argv.includes('-y') || process.argv.includes('--yes');
 
   // Get configuration
   CTX_LIMIT = getConfigValue('--ctx-limit', CTX_LIMIT);
@@ -690,6 +706,27 @@ async function main() {
     console.log(`\n[WARNING] Preview mode - no changes made`);
     console.log(`To apply these changes, run without --preview flag.`);
   } else {
+    // Show optimization summary and ask for confirmation
+    console.log('\n[SUMMARY] Optimization Plan:');
+    console.log('========================');
+    console.log(`Original tokens: ${currentTotal.toLocaleString()}`);
+    console.log(`Target tokens: ${optimization.finalTokens.toLocaleString()}`);
+    console.log(`Will remove: ${(currentTotal - optimization.finalTokens).toLocaleString()} tokens (${((1 - optimization.finalTokens / currentTotal) * 100).toFixed(1)}%)`);
+    console.log(`Ranges to remove: ${optimization.removedRanges.length}`);
+    console.log(`Ranges to keep: ${optimization.keptRanges.length}`);
+
+    // Ask for confirmation unless -y flag is used
+    let proceed = skipConfirm;
+    if (!skipConfirm) {
+      console.log('');
+      proceed = await promptConfirmation('Proceed with optimization?');
+    }
+
+    if (!proceed) {
+      console.log('[CANCELLED] Optimization cancelled by user');
+      return;
+    }
+
     // Step 5: Backup original file
     const backupPath = await backupFile(filePath);
 
