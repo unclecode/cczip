@@ -1,0 +1,34 @@
+{
+  "name": "cczip",
+  "version": "1.0.0",
+  "description": "Claude Context Compressor - Intelligently compress Claude conversation history",
+  "main": "cczip.js",
+  "bin": {
+    "cczip": "./cczip.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "claude",
+    "anthropic",
+    "ai",
+    "context",
+    "compression",
+    "optimization",
+    "jsonl"
+  ],
+  "author": "unclecode",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unclecode/cczip.git"
+  },
+  "bugs": {
+    "url": "https://github.com/unclecode/cczip/issues"
+  },
+  "homepage": "https://github.com/unclecode/cczip#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
