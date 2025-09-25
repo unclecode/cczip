@@ -12,8 +12,9 @@ const DEFAULT_TARGET_RATIO = 0.5;
 let PROTECTED_START = 2;
 let PROTECTED_END = 3;
 
+const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
+
 function findMostRecentJSONL() {
-  const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
   const cwd = process.cwd();
   const projectFolderName = cwd.replace(/\//g, '-');
   const projectDir = path.join(claudeProjectsDir, projectFolderName);
@@ -40,12 +41,31 @@ function findMostRecentJSONL() {
 }
 
 function getFilePath() {
-  // Check for file path in arguments
+  // Check for file path or session ID in arguments
   const args = process.argv.slice(2);
   for (const arg of args) {
-    if (!arg.startsWith('--') && !arg.endsWith('%') && isNaN(arg) && fs.existsSync(arg)) {
-      console.log(`Using specified file: ${path.basename(arg)}`);
-      return arg;
+    if (!arg.startsWith('--') && !arg.endsWith('%') && isNaN(arg)) {
+      // Check if it's a full file path
+      if (fs.existsSync(arg)) {
+        console.log(`Using specified file: ${path.basename(arg)}`);
+        return arg;
+      }
+
+      // Check if it's a session ID (UUID format)
+      if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(arg)) {
+        const cwd = process.cwd();
+        const projectFolderName = cwd.replace(/\//g, '-');
+        const projectDir = path.join(claudeProjectsDir, projectFolderName);
+        const sessionFile = path.join(projectDir, `${arg}.jsonl`);
+
+        if (fs.existsSync(sessionFile)) {
+          console.log(`Using session: ${arg}`);
+          return sessionFile;
+        } else {
+          console.log(`[ERROR] Session not found: ${arg}`);
+          process.exit(1);
+        }
+      }
     }
   }
 
@@ -459,11 +479,12 @@ function showHelp() {
   console.log('  cczip [options] [file] [target]');
   console.log('');
   console.log('PARAMETERS:');
-  console.log('  file            Path to JSONL file (auto-detects if omitted)');
+  console.log('  file/session    Path to JSONL file or session ID (auto-detects if omitted)');
   console.log('  compression     Compression amount as % (40%) or target tokens (100000)');
   console.log('                  Default: 50% compression');
   console.log('');
   console.log('OPTIONS:');
+  console.log('  --list          List all available chat sessions');
   console.log('  --context       Show current token usage visualization');
   console.log('  --preview       Show optimization plan without making changes');
   console.log('  --restore       Restore from most recent backup');
@@ -473,11 +494,13 @@ function showHelp() {
   console.log('  --help          Show this help message');
   console.log('');
   console.log('EXAMPLES:');
+  console.log('  cczip --list                   # List all sessions');
   console.log('  cczip --context                # Show current token usage');
   console.log('  cczip                          # Compress by 50% (default)');
   console.log('  cczip 30%                      # Light compression (remove 30%)');
   console.log('  cczip 70%                      # Heavy compression (remove 70%)');
   console.log('  cczip 100000                   # Compress to 100k tokens');
+  console.log('  cczip SESSION_ID 40%           # Compress session by 40%');
   console.log('  cczip file.jsonl 40%           # Compress file by 40%');
   console.log('  cczip --preview 60%            # Preview 60% compression');
   console.log('  cczip --restore                # Restore from backup');
@@ -494,12 +517,85 @@ function getConfigValue(flag, defaultValue) {
   return defaultValue;
 }
 
+async function listSessions() {
+  const cwd = process.cwd();
+  const projectFolderName = cwd.replace(/\//g, '-');
+  const projectDir = path.join(claudeProjectsDir, projectFolderName);
+
+  if (!fs.existsSync(projectDir)) {
+    console.log('[ERROR] No Claude sessions found in current directory');
+    return;
+  }
+
+  const files = fs.readdirSync(projectDir)
+    .filter(f => f.endsWith('.jsonl'))
+    .map(f => {
+      const fullPath = path.join(projectDir, f);
+      const stats = fs.statSync(fullPath);
+      const sessionId = f.replace('.jsonl', '');
+
+      // Quick token count - read file and get last user message's cache_read_input_tokens
+      let tokens = 0;
+      let messageCount = 0;
+      try {
+        const lines = fs.readFileSync(fullPath, 'utf-8').split('\n').filter(l => l.trim());
+        for (const line of lines) {
+          if (line.includes('"type":"user"')) {
+            messageCount++;
+          }
+        }
+        // Get last message with cache_read_input_tokens
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const match = lines[i].match(/"cache_read_input_tokens":(\d+)/);
+          if (match) {
+            tokens = parseInt(match[1]);
+            break;
+          }
+        }
+      } catch (e) {}
+
+      return {
+        id: sessionId,
+        path: fullPath,
+        mtime: stats.mtime,
+        tokens,
+        messages: messageCount,
+        percent: Math.round((tokens / CTX_LIMIT) * 100)
+      };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+
+  console.log('[SESSIONS] Available chat sessions:\n');
+  console.log('ID                                     TOKENS    MSGS  USAGE  MODIFIED');
+  console.log('────────────────────────────────────────────────────────────────────────');
+
+  files.forEach((f, idx) => {
+    const modified = new Date(f.mtime).toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const usage = f.percent >= 80 ? `[31m${f.percent}%[0m` :
+                  f.percent >= 60 ? `[33m${f.percent}%[0m` :
+                  `${f.percent}%`;
+
+    console.log(
+      `${f.id}  ${f.tokens.toString().padStart(6)}  ${f.messages.toString().padStart(4)}  ${usage.padStart(4)}  ${modified}`
+    );
+  });
+
+  console.log('\nUsage: cczip [SESSION_ID] or cczip [SESSION_ID] [compression]');
+}
+
 async function main() {
   // Parse command line arguments
   if (process.argv.includes('--help')) {
     showHelp();
   }
 
+  const isList = process.argv.includes('--list');
   const isContext = process.argv.includes('--context');
   const isPreview = process.argv.includes('--preview');
   const isRestore = process.argv.includes('--restore');
@@ -508,6 +604,12 @@ async function main() {
   CTX_LIMIT = getConfigValue('--ctx-limit', CTX_LIMIT);
   PROTECTED_START = getConfigValue('--protect-start', PROTECTED_START);
   PROTECTED_END = getConfigValue('--protect-end', PROTECTED_END);
+
+  // Handle --list command
+  if (isList) {
+    await listSessions();
+    return;
+  }
 
   // Get file path
   const filePath = getFilePath();

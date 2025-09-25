@@ -1,6 +1,6 @@
 {
   "name": "cczip",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Claude Context Compressor - Intelligently compress Claude conversation history",
   "main": "cczip.js",
   "bin": {
