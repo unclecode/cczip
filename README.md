@@ -11,23 +11,26 @@ npm install -g cczip
 ## Usage
 
 ```bash
-# Auto-detect file and compress to 50% (default)
+# Auto-detect file and compress by 50% (default)
 cczip
 
-# Specify target percentage
-cczip 60%
+# Light compression (remove 30% of content)
+cczip 30%
 
-# Specify absolute token target
+# Heavy compression (remove 70% of content)
+cczip 70%
+
+# Compress to specific token target
 cczip 80000
 
-# Specify file and target
-cczip conversation.jsonl 70%
+# Specify file and compression
+cczip conversation.jsonl 40%
 
 # Show current context usage
 cczip --context
 
 # Preview changes without modifying
-cczip --preview 50%
+cczip --preview 40%
 
 # Restore from backup
 cczip --restore

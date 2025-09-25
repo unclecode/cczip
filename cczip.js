@@ -57,12 +57,13 @@ function getTargetTokens() {
   // Check for target in arguments
   const args = process.argv.slice(2);
   for (const arg of args) {
-    // Check for percentage (e.g., "60%")
+    // Check for percentage (e.g., "40%") - now means compress BY this amount
     if (arg.endsWith('%')) {
-      const percent = parseFloat(arg.slice(0, -1));
-      if (!isNaN(percent) && percent > 0 && percent <= 100) {
-        const target = Math.floor(CTX_LIMIT * (percent / 100));
-        console.log(`Target: ${percent}% of ${CTX_LIMIT.toLocaleString()} = ${target.toLocaleString()} tokens`);
+      const compressPercent = parseFloat(arg.slice(0, -1));
+      if (!isNaN(compressPercent) && compressPercent > 0 && compressPercent < 100) {
+        const keepPercent = 100 - compressPercent;
+        const target = Math.floor(CTX_LIMIT * (keepPercent / 100));
+        console.log(`Compress by ${compressPercent}% → Keep ${keepPercent}% (${target.toLocaleString()} tokens)`);
         return target;
       }
     }
@@ -71,15 +72,16 @@ function getTargetTokens() {
       const target = parseInt(arg);
       if (target > 0) {
         const percent = ((target / CTX_LIMIT) * 100).toFixed(1);
-        console.log(`Target: ${target.toLocaleString()} tokens (${percent}% of ${CTX_LIMIT.toLocaleString()})`);
+        const compressPercent = (100 - parseFloat(percent)).toFixed(1);
+        console.log(`Target: ${target.toLocaleString()} tokens (compress by ${compressPercent}%)`);
         return target;
       }
     }
   }
 
-  // Use default
-  const target = Math.floor(CTX_LIMIT * DEFAULT_TARGET_RATIO);
-  console.log(`Target: ${(DEFAULT_TARGET_RATIO * 100)}% of ${CTX_LIMIT.toLocaleString()} = ${target.toLocaleString()} tokens (default)`);
+  // Use default - 50% compression (keep 50%)
+  const target = Math.floor(CTX_LIMIT * 0.5);
+  console.log(`Compress by 50% → Keep 50% (${target.toLocaleString()} tokens) [default]`);
   return target;
 }
 
@@ -458,8 +460,8 @@ function showHelp() {
   console.log('');
   console.log('PARAMETERS:');
   console.log('  file            Path to JSONL file (auto-detects if omitted)');
-  console.log('  target          Token target as percentage (50%) or absolute (100000)');
-  console.log('                  Default: 50% of context limit');
+  console.log('  compression     Compression amount as % (40%) or target tokens (100000)');
+  console.log('                  Default: 50% compression');
   console.log('');
   console.log('OPTIONS:');
   console.log('  --context       Show current token usage visualization');
@@ -472,13 +474,13 @@ function showHelp() {
   console.log('');
   console.log('EXAMPLES:');
   console.log('  cczip --context                # Show current token usage');
-  console.log('  cczip                          # Auto-detect file, 50% target');
-  console.log('  cczip 60%                      # Auto-detect file, 60% target');
-  console.log('  cczip 80000                    # Auto-detect file, 80k tokens');
-  console.log('  cczip file.jsonl 70%           # Specific file, 70% target');
-  console.log('  cczip --preview 40%            # Preview 40% optimization');
+  console.log('  cczip                          # Compress by 50% (default)');
+  console.log('  cczip 30%                      # Light compression (remove 30%)');
+  console.log('  cczip 70%                      # Heavy compression (remove 70%)');
+  console.log('  cczip 100000                   # Compress to 100k tokens');
+  console.log('  cczip file.jsonl 40%           # Compress file by 40%');
+  console.log('  cczip --preview 60%            # Preview 60% compression');
   console.log('  cczip --restore                # Restore from backup');
-  console.log('  cczip --ctx-limit 150000 50%   # Custom context limit');
   process.exit(0);
 }
 
