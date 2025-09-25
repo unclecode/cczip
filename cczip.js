@@ -407,11 +407,54 @@ async function restoreFromBackup(filePath) {
   return true;
 }
 
+function showContextVisualization(tokens, limit = CTX_LIMIT, label = 'Context Usage') {
+  const percentage = Math.round((tokens / limit) * 100);
+  const filled = Math.round((tokens / limit) * 10);
+  const empty = 10 - filled;
+
+  // Purple color for filled blocks
+  const purple = '\x1b[38;5;99m';
+  const gray = '\x1b[90m';
+  const reset = '\x1b[0m';
+  const bold = '\x1b[1m';
+
+  console.log('');
+
+  // Create the visualization grid
+  const filledBlock = `${purple}⛁${reset}`;
+  const emptyBlock = `${gray}⛶${reset}`;
+
+  // Create 5 rows of 10 blocks each
+  for (let row = 0; row < 5; row++) {
+    let line = '  ';
+    for (let col = 0; col < 10; col++) {
+      const index = row * 10 + col;
+      const percentIndex = (index + 1) * 2; // Each block represents 2%
+      if (percentIndex <= percentage) {
+        line += filledBlock + ' ';
+      } else {
+        line += emptyBlock + ' ';
+      }
+    }
+
+    // Add label on the second row
+    if (row === 1) {
+      line += `  ${bold}${label}${reset}`;
+    } else if (row === 2) {
+      line += `  ${tokens.toLocaleString()}/${limit.toLocaleString()} tokens (${percentage}%)`;
+    }
+
+    console.log(line);
+  }
+
+  console.log('');
+}
+
 function showHelp() {
-  console.log('JSONL Optimizer v1.0');
+  console.log('CCZip - Claude Context Compressor v1.0');
   console.log('');
   console.log('USAGE:');
-  console.log('  node optimize_jsonl.js [options] [file] [target]');
+  console.log('  cczip [options] [file] [target]');
   console.log('');
   console.log('PARAMETERS:');
   console.log('  file            Path to JSONL file (auto-detects if omitted)');
@@ -419,6 +462,7 @@ function showHelp() {
   console.log('                  Default: 50% of context limit');
   console.log('');
   console.log('OPTIONS:');
+  console.log('  --context       Show current token usage visualization');
   console.log('  --preview       Show optimization plan without making changes');
   console.log('  --restore       Restore from most recent backup');
   console.log('  --ctx-limit N   Set context limit (default: 200000)');
@@ -427,13 +471,14 @@ function showHelp() {
   console.log('  --help          Show this help message');
   console.log('');
   console.log('EXAMPLES:');
-  console.log('  node optimize_jsonl.js                     # Auto-detect file, 50% target');
-  console.log('  node optimize_jsonl.js 60%                 # Auto-detect file, 60% target');
-  console.log('  node optimize_jsonl.js 80000               # Auto-detect file, 80k tokens');
-  console.log('  node optimize_jsonl.js file.jsonl 70%      # Specific file, 70% target');
-  console.log('  node optimize_jsonl.js --preview 40%       # Preview 40% optimization');
-  console.log('  node optimize_jsonl.js --restore           # Restore from backup');
-  console.log('  node optimize_jsonl.js --ctx-limit 150000 50%  # Custom context limit');
+  console.log('  cczip --context                # Show current token usage');
+  console.log('  cczip                          # Auto-detect file, 50% target');
+  console.log('  cczip 60%                      # Auto-detect file, 60% target');
+  console.log('  cczip 80000                    # Auto-detect file, 80k tokens');
+  console.log('  cczip file.jsonl 70%           # Specific file, 70% target');
+  console.log('  cczip --preview 40%            # Preview 40% optimization');
+  console.log('  cczip --restore                # Restore from backup');
+  console.log('  cczip --ctx-limit 150000 50%   # Custom context limit');
   process.exit(0);
 }
 
@@ -453,6 +498,7 @@ async function main() {
     showHelp();
   }
 
+  const isContext = process.argv.includes('--context');
   const isPreview = process.argv.includes('--preview');
   const isRestore = process.argv.includes('--restore');
 
@@ -463,6 +509,19 @@ async function main() {
 
   // Get file path
   const filePath = getFilePath();
+
+  if (isContext) {
+    // Show current context usage
+    console.log(`File: ${filePath}`);
+    const { data } = await extractUserMessagesAndTokens(filePath);
+    const filteredResults = applyBackwardElimination(data);
+    const currentTotal = filteredResults.reduce((sum, item) => sum + item.diff, 0);
+    const messageCount = filteredResults.length;
+    showContextVisualization(currentTotal, CTX_LIMIT, 'Current Context Usage');
+    console.log(`  Total messages: ${messageCount}`);
+    console.log('');
+    return;
+  }
 
   if (isRestore) {
     console.log(`Restoring: ${filePath}\n`);
